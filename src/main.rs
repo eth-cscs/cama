@@ -27,9 +27,9 @@ use common::config::types::MantaConfiguration;
 use config::Config;
 use directories::ProjectDirs;
 use futures::{AsyncBufReadExt, SinkExt, StreamExt, TryStreamExt};
-use mesa::{
-    common::vault::http_client::fetch_shasta_k8s_secrets_from_vault,
-    hsm::hw_inventory::hw_component::types::NodeSummary,
+use csm_rs::{
+    common::vault::http_client::fetch_shasta_k8s_secrets,
+    hsm::hw_inventory::hw_component::r#struct::NodeSummary,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -486,7 +486,7 @@ async fn authenticate(headers: HeaderMap) -> Result<String, StatusCode> {
     let username = user_credentials.next().unwrap();
     let password = user_credentials.next().unwrap();
 
-    let auth_token_result = mesa::common::authentication::get_token_from_shasta_endpoint(
+    let auth_token_result = csm_rs::common::authentication::get_token_from_shasta_endpoint(
         &keycloak_base_url,
         &shasta_root_cert,
         username,
@@ -573,7 +573,7 @@ async fn handle_socket(socket: WebSocket, xname: String) {
         }
         K8sAuth::Vault {
             base_url: vault_base_url,
-        } => fetch_shasta_k8s_secrets_from_vault(&vault_base_url, &shasta_token, &site_name)
+        } => fetch_shasta_k8s_secrets(&vault_base_url, &shasta_token, &site_name)
             .await
             .unwrap(),
     };
@@ -584,7 +584,7 @@ async fn handle_socket(socket: WebSocket, xname: String) {
 
     // CONSOLE
 
-    let mut attached = mesa::node::console::get_container_attachment_to_conman(
+    let mut attached = csm_rs::node::console::get_container_attachment_to_conman(
         &xname.to_string(),
         &k8s_details.api_url,
         shasta_k8s_secrets,
@@ -710,14 +710,14 @@ async fn get_service_health(service: &str) -> Result<Json<serde_json::Value>> {
 
     let response: Value = match service {
         // NOTE: sending always 500 error is a BAD practice, we
-        // should do proper error handling by making mesa to return the right error code,
+        // should do proper error handling by making csm_rs to return the right error code,
         // then create the right HTTP status code based on it
         "cfs" => {
-            mesa::cfs::common::health_check(&shasta_token, &shasta_base_url, &shasta_root_cert)
+            csm_rs::cfs::common::health_check(&shasta_token, &shasta_base_url, &shasta_root_cert)
                 .await?
         }
         "bos" => {
-            mesa::bos::health_check::get(&shasta_token, &shasta_base_url, &shasta_root_cert).await?
+            csm_rs::bos::health_check::get(&shasta_token, &shasta_base_url, &shasta_root_cert).await?
         }
         _ => bail!("Invalid service name"),
     };
@@ -730,7 +730,7 @@ async fn get_cfs_health_check() -> Result<Json<serde_json::Value>, StatusCode> {
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     // NOTE: sending always 500 error is a BAD practice, we
-    // should do proper error handling by making mesa to return the right error code,
+    // should do proper error handling by making csm_rs to return the right error code,
     // then create the right HTTP status code based on it
 
     Ok(response)
@@ -741,7 +741,7 @@ async fn get_bos_health_check() -> Result<Json<serde_json::Value>, StatusCode> {
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     // NOTE: sending always 500 error is a BAD practice, we
-    // should do proper error handling by making mesa to return the right error code,
+    // should do proper error handling by making csm_rs to return the right error code,
     // then create the right HTTP status code based on it
 
     Ok(response)
@@ -837,7 +837,7 @@ async fn get_group_details(
 
     let hsm_groups_node_list = group.get_members();
 
-    let response = mesa::node::utils::get_node_details(
+    let response = csm_rs::node::utils::get_node_details(
         &shasta_token,
         &shasta_base_url,
         &shasta_root_cert,
@@ -879,18 +879,19 @@ async fn get_hsm_hardware(Path(group): Path<String>) -> Json<serde_json::Value> 
     // Get auth token
     let shasta_token = backend.get_api_token(&site_name).await.unwrap();
 
-    let hsm_group = mesa::hsm::group::http_client::get(
+    let hsm_group = csm_rs::hsm::group::http_client::get(
         &shasta_token,
         &shasta_base_url,
         &shasta_root_cert,
-        Some(&[&group]),
-        None,
+        Some(&group),
+        //Some(&[&group]),
+        //None,
     )
     .await
     .unwrap();
 
     let hsm_group_target_members =
-        mesa::hsm::group::utils::get_member_vec_from_hsm_group(&hsm_group.first().unwrap());
+        csm_rs::hsm::group::utils::get_member_vec_from_hsm_group(&hsm_group.first().unwrap());
 
     let mut hsm_summary: Vec<NodeSummary> = Vec::new();
 
@@ -912,7 +913,7 @@ async fn get_hsm_hardware(Path(group): Path<String>) -> Json<serde_json::Value> 
 
         tasks.spawn(async move {
             let _permit = permit; // Wait semaphore to allow new tasks https://github.com/tokio-rs/tokio/discussions/2648#discussioncomment-34885
-            mesa::hsm::hw_inventory::hw_component::http_client::get(
+            csm_rs::hsm::hw_inventory::hw_component::http_client::get(
                 &shasta_token_string,
                 &shasta_base_url_string,
                 &shasta_root_cert_vec,
@@ -1107,12 +1108,13 @@ async fn node_migration(
         .map(|xname| xname.trim())
         .collect::<Vec<&str>>();
 
-    if mesa::hsm::group::http_client::get(
+    if csm_rs::hsm::group::http_client::get(
         shasta_token,
         &shasta_base_url,
         &shasta_root_cert,
-        Some(&[&target]),
-        None,
+        //Some(&[&target]),
+        Some(&target),
+        //None,
     )
     .await
     .is_ok()
@@ -1124,7 +1126,7 @@ async fn node_migration(
                 "HSM group {} does not exist, but the option to create the group has been selected, creating it now.",
                 target.to_string()
             );
-            mesa::hsm::group::http_client::create_new_group(
+            csm_rs::hsm::group::http_client::create_new_hsm_group(
                 shasta_token,
                 &shasta_base_url,
                 &shasta_root_cert,
@@ -1145,7 +1147,7 @@ async fn node_migration(
         }
     }
 
-    let _ = mesa::hsm::group::utils::migrate_hsm_members(
+    let _ = csm_rs::hsm::group::utils::migrate_hsm_members(
         shasta_token,
         &shasta_base_url,
         &shasta_root_cert,

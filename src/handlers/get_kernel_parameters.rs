@@ -26,7 +26,7 @@ pub async fn get_kernel_parameters(
         Err(e) => return e,
     };
 
-    let kernel_params = get_kernel_parameters_from_mesa(cfg, &xnames).await.unwrap();
+    let kernel_params = get_kernel_parameters_from_csm_rs(cfg, &xnames).await.unwrap();
 
     if kernel_params.len() != xnames.len() {
         let difference = xnames.len() - kernel_params.len();

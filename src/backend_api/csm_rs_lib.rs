@@ -1,11 +1,11 @@
 use axum::http::StatusCode;
 use std::collections::HashMap;
 
-use mesa::bss::{http_client::get as boot_parameters_get, types::BootParameters};
+use csm_rs::bss::bootparameters::{http_client::get as boot_parameters_get, BootParameters};
 
 use crate::backend_api::*;
 
-pub async fn get_kernel_parameters_from_mesa(
+pub async fn get_kernel_parameters_from_csm_rs(
     config: ReqCfg,
     xnames: &[String],
 ) -> Result<HashMap<String, String>, (StatusCode, String)> {
